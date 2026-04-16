@@ -1,0 +1,76 @@
+# ============================================================================
+# Docker Compose — Ambiente local de desenvolvimento
+# ============================================================================
+# Sobe dois serviços:
+#   1. api        FastAPI de predição de churn
+#   2. mlflow     servidor de tracking de experimentos (UI + backend)
+#
+# Para rodar:  docker compose up --build
+# Para parar:  docker compose down
+# ============================================================================
+
+services:
+  # --------------------------------------------------------------------------
+  # API de Inferência (FastAPI)
+  # --------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: churn-api
+    ports:
+      - "8000:8000"  # localhost:8000 -> container:8000
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MODEL_PATH=/app/models
+      - LOG_LEVEL=INFO
+    volumes:
+      # Monta a pasta models/ local no container (útil em dev para não
+      # precisar rebuildar a imagem toda vez que treinar um modelo novo)
+      - ./models:/app/models:ro
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - churn-network
+
+  # --------------------------------------------------------------------------
+  # MLflow Tracking Serverr
+  # --------------------------------------------------------------------------
+  # O MLflow e onde registramos os experimentos (métricas, parametros, artefatos).
+  # Ele tem uma UI web acessivel em http://localhost:5000
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.12.2
+    container_name: churn-mlflow
+    ports:
+      - "5000:5000"  # UI do MLflow
+    environment:
+      - MLFLOW_BACKEND_STORE_URI=sqlite:///mlflow/mlflow.db
+      - MLFLOW_DEFAULT_ARTIFACT_ROOT=/mlflow/artifacts
+    volumes:
+      # Persiste os dados do MLflow localmente (não perde ao derrubar o container)
+      - mlflow-data:/mlflow
+    command: >
+      mlflow server
+        --host 0.0.0.0
+        --port 5000
+        --backend-store-uri sqlite:///mlflow/mlflow.db
+        --default-artifact-root /mlflow/artifacts
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - churn-network
+
+networks:
+  churn-network:
+    driver: bridge
+
+# Volume nomeado  Docker gerencia o armazenamento no host, garantindo persistência dos dados do MLflow mesmo se o container for derrubado ou recriado
+volumes:
+  mlflow-data:
