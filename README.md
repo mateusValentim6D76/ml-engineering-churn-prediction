@@ -1,4 +1,4 @@
-# Churn Prediction — ML Engineering Pipeline
+# Churn Prediction - ML Engineering Pipeline
 
 End-to-end Machine Learning Engineering project for telecom customer churn prediction, featuring exploratory data analysis, baseline models, a PyTorch MLP, experiment tracking with MLflow, inference via FastAPI, and production-oriented practices such as testing, containerization, and cloud deployment.
 
