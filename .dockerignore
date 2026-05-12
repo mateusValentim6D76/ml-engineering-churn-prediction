@@ -1,0 +1,55 @@
+# .dockerignore — Arquivos excluidos do contexto de build do Docker
+# Sem isso, o "docker build" copia TUDO pro daemon, deixando o build lento
+# e a imagem maior do que deveria.
+
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.venv
+venv
+env
+.pytest_cache
+.ruff_cache
+.mypy_cache
+htmlcov
+.coverage
+
+# Notebooks (nao vao pra producao)
+notebooks/
+
+# MLflow (dados de experimento ficam locais)
+mlruns/
+mlflow.db
+mlartifacts/
+
+# Terraform (infra, nao vai no container)
+terraform/
+
+# Docker (evita loop no build)
+Dockerfile
+docker-compose.yaml
+docker-compose.override.yml
+.dockerignore
+
+# Docs e config
+docs/
+*.md
+LICENSE
+Makefile
+.env
+.envrc
+
+# Testes (nao precisam na imagem de producao)
+tests/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

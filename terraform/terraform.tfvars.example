@@ -1,0 +1,24 @@
+# terraform.tfvars.example — Exemplo de configuracao
+#
+# Copie pra terraform.tfvars e ajuste os valores.
+# O terraform.tfvars NAO deve ser commitado (ja ta no .gitignore).
+#
+# Uso:
+#   cp terraform.tfvars.example terraform.tfvars
+#   terraform plan
+
+project_name = "churn-prediction"
+environment  = "dev"
+aws_region   = "us-east-1"
+
+# ECS — CPU e memoria do container (Fargate)
+# 256 CPU = 0.25 vCPU | 512 MB RAM → suficiente pra dev
+# 512 CPU = 0.5 vCPU  | 1024 MB RAM → pra producao com mais carga
+cpu    = 256
+memory = 512
+
+# Numero de containers rodando simultaneamente
+desired_count = 1
+
+# Porta do container (deve bater com o Dockerfile)
+container_port = 8000
