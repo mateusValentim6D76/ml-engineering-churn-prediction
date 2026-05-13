@@ -153,9 +153,20 @@ def load_model(
     model_path = Path(model_path)
     scaler_path = Path(scaler_path)
 
-    # Permitir override via variáveis de ambiente
-    model_path = Path(os.getenv("MODEL_PATH", str(model_path)))
-    scaler_path = Path(os.getenv("SCALER_PATH", str(scaler_path)))
+    # Permitir override via variavel de ambiente
+    # MODEL_PATH pode ser um diretorio (ex: /app/models) ou arquivo completo
+    env_model = os.getenv("MODEL_PATH")
+    if env_model:
+        env_path = Path(env_model)
+        if env_path.is_dir():
+            model_path = env_path / "churn_mlp.pt"
+            scaler_path = env_path / "scaler.joblib"
+        else:
+            model_path = env_path
+
+    env_scaler = os.getenv("SCALER_PATH")
+    if env_scaler:
+        scaler_path = Path(env_scaler)
 
     # Carregar checkpoint do modelo
     checkpoint = torch.load(model_path, map_location="cpu", weights_only=False)
