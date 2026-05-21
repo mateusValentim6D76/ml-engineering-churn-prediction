@@ -1,16 +1,3 @@
-"""
-Schemas Pydantic  validação de entrada e saída da API.
-
-Pydantic eh um validaro de dados que garante que as requisições e respostas da API sigam um formato definido
-Define a estrutura dos dados que a API aceita e retorna,
-com validação automática e documentação no Swagger.
-
-Cada campo tem:
-    - tipo (str, int, float)
-    - validações (ge=0, le=1, Literal[...])
-    - descrição para o Swagger
-"""
-
 from __future__ import annotations
 
 from typing import Literal
@@ -19,15 +6,7 @@ from pydantic import BaseModel, Field
 
 
 class CustomerFeatures(BaseModel):
-    """Schema de entrada  features de um cliente para predição de churn.
 
-    Contém todas as 20 features do dataset Telco Customer Churn (IBM).
-    Os nomes usam snake_case na API, mas são convertidos para o formato
-    original do dataset internamente.
-
-    """
-
-    # Demográficas
     gender: Literal["Male", "Female"] = Field(
         ..., description="Gênero do cliente"
     )
@@ -41,7 +20,6 @@ class CustomerFeatures(BaseModel):
         ..., description="Tem dependentes?"
     )
 
-    # Conta
     tenure: int = Field(
         ..., ge=0, le=72, description="Meses como cliente (0-72)"
     )
@@ -58,7 +36,6 @@ class CustomerFeatures(BaseModel):
         "Credit card (automatic)",
     ] = Field(..., description="Método de pagamento")
 
-    # Serviços de telefonia
     phone_service: Literal["Yes", "No"] = Field(
         ..., description="Tem serviço de telefone?"
     )
@@ -66,7 +43,6 @@ class CustomerFeatures(BaseModel):
         ..., description="Tem múltiplas linhas?"
     )
 
-    # Serviços de internet
     internet_service: Literal["DSL", "Fiber optic", "No"] = Field(
         ..., description="Tipo de serviço de internet"
     )
@@ -89,7 +65,6 @@ class CustomerFeatures(BaseModel):
         ..., description="Tem streaming de filmes?"
     )
 
-    # Financeiras
     monthly_charges: float = Field(
         ..., ge=0, description="Cobrança mensal ($)"
     )
@@ -98,12 +73,6 @@ class CustomerFeatures(BaseModel):
     )
 
     def to_raw_dict(self) -> dict:
-        """Converte o schema Pydantic para o formato original do dataset.
-
-        Analogia Java:
-            É como um método toEntity() que converte DTO → Entity.
-            Mapeia snake_case → PascalCase/formato original.
-        """
         return {
             "gender": self.gender,
             "SeniorCitizen": self.senior_citizen,
@@ -156,7 +125,6 @@ class CustomerFeatures(BaseModel):
 
 
 class PredictionResponse(BaseModel):
-    """Schema de saída  resultado da predição."""
 
     churn_probability: float = Field(
         ..., ge=0, le=1, description="Probabilidade de churn (0.0 a 1.0)"
@@ -170,7 +138,6 @@ class PredictionResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    """Schema do endpoint /health."""
 
     status: str = Field(..., description="Status da API")
     model_loaded: bool = Field(..., description="Modelo carregado com sucesso?")
@@ -180,15 +147,7 @@ class HealthResponse(BaseModel):
     )
 
 
-# ── Schemas de Batch ─────────────────────────────────────────────────────────
-
-
 class BatchPredictionRequest(BaseModel):
-    """Schema de entrada para predição em lote.
-
-    Analogia Spring:
-        É como receber List<CustomerFeaturesDTO> no @RequestBody.
-    """
 
     customers: list[CustomerFeatures] = Field(
         ..., min_length=1, max_length=100,
@@ -197,7 +156,6 @@ class BatchPredictionRequest(BaseModel):
 
 
 class BatchPredictionResponse(BaseModel):
-    """Schema de saída para predição em lote."""
 
     predictions: list[PredictionResponse] = Field(
         ..., description="Lista de predições (mesma ordem dos clientes)"

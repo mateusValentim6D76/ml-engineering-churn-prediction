@@ -1,23 +1,3 @@
-# ============================================================================
-# Main — Recursos de infraestrutura na AWS
-# ============================================================================
-#
-# Recursos criados:
-#   1. ECR         - Repositorio de imagens Docker (Docker Hub privado da AWS)
-#   2. VPC         - Rede privada na AWS
-#   3. Subnets     - Sub-redes publicas em 2 AZs (alta disponibilidade)
-#   4. Internet GW - Porta de saida para a internet
-#   5. Security Gr - Firewall (quais portas podem receber trafego)
-#   6. ALB         - Load Balancer (distribui requisicoes entre containers)
-#   7. ECS Cluster - Cluster de containers
-#   8. Task Def    - Definicao do container (imagem, CPU, RAM, portas)
-#   9. ECS Service - Garante que N containers estejam sempre rodando
-#  10. IAM Roles   - Permissoes para o ECS acessar ECR e CloudWatch
-#  11. CloudWatch  - Logs centralizados
-# ============================================================================
-
-# ── Provider ─────────────────────────────────────────────────────────────────
-# Configura o Terraform para usar a AWS na regiao definida nas variaveis.
 terraform {
   required_version = ">= 1.5.0"
 
@@ -32,7 +12,6 @@ terraform {
 provider "aws" {
   region = var.aws_region
 
-  # Tags padrao aplicadas em todos os recursos automaticamente
   default_tags {
     tags = {
       Project     = var.project_name
@@ -42,30 +21,20 @@ provider "aws" {
   }
 }
 
-# ── Data Sources ─────────────────────────────────────────────────────────────
-# Busca as Availability Zones disponiveis na regiao (ex: us-east-1a, us-east-1b)
 data "aws_availability_zones" "available" {
   state = "available"
 }
 
-# ============================================================================
-# 1. ECR — Elastic Container Registry
-# ============================================================================
-# Repositorio privado de imagens Docker na AWS.
-# Aqui que o "docker push" envia a imagem buildada.
 resource "aws_ecr_repository" "app" {
   name                 = var.project_name
   image_tag_mutability = "MUTABLE"
   force_delete         = true
 
-  # Scan automatico de vulnerabilidades nas imagens
   image_scanning_configuration {
     scan_on_push = true
   }
 }
 
-# Politica de ciclo de vida: mantem apenas as ultimas 5 imagens
-# Sem isso, o ECR acumula imagens antigas e voce paga storage a toa
 resource "aws_ecr_lifecycle_policy" "app" {
   repository = aws_ecr_repository.app.name
 
@@ -87,11 +56,6 @@ resource "aws_ecr_lifecycle_policy" "app" {
   })
 }
 
-# ============================================================================
-# 2. VPC — Virtual Private Cloud
-# ============================================================================
-# Rede privada isolada na AWS. Todos os recursos ficam dentro dela.
-# CIDR 10.0.0.0/16 = ~65.000 IPs disponiveis
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_support   = true
@@ -102,16 +66,10 @@ resource "aws_vpc" "main" {
   }
 }
 
-# ============================================================================
-# 3. Subnets Publicas (2 AZs)
-# ============================================================================
-# Sub-redes dentro da VPC, cada uma em uma AZ diferente.
-# "Publica" = recursos nela podem ter IP publico e acessar a internet.
-# 2 AZs pra alta disponibilidade (o ALB exige no minimo 2).
 resource "aws_subnet" "public" {
   count                   = 2
   vpc_id                  = aws_vpc.main.id
-  cidr_block              = cidrsubnet(var.vpc_cidr, 8, count.index) # 10.0.0.0/24, 10.0.1.0/24
+  cidr_block              = cidrsubnet(var.vpc_cidr, 8, count.index)
   availability_zone       = data.aws_availability_zones.available.names[count.index]
   map_public_ip_on_launch = true
 
@@ -120,11 +78,6 @@ resource "aws_subnet" "public" {
   }
 }
 
-# ============================================================================
-# 4. Internet Gateway + Route Table
-# ============================================================================
-# Internet Gateway: conecta a VPC a internet.
-# Sem isso, nada dentro da VPC consegue acessar (ou ser acessado pela) internet.
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
 
@@ -133,7 +86,6 @@ resource "aws_internet_gateway" "main" {
   }
 }
 
-# Route Table: define que trafego para 0.0.0.0/0 (qualquer destino externo) vai pro IGW
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
 
@@ -147,21 +99,15 @@ resource "aws_route_table" "public" {
   }
 }
 
-# Associa a route table as subnets publicas
 resource "aws_route_table_association" "public" {
   count          = 2
   subnet_id      = aws_subnet.public[count.index].id
   route_table_id = aws_route_table.public.id
 }
 
-# ============================================================================
-# 5. Security Groups (Firewall)
-# ============================================================================
-
-# SG do ALB: aceita trafego HTTP (porta 80) de qualquer IP
 resource "aws_security_group" "alb" {
   name        = "${var.project_name}-alb-sg"
-  description = "Security group do ALB - permite HTTP da internet"
+  description = "Security group do ALB"
   vpc_id      = aws_vpc.main.id
 
   ingress {
@@ -184,10 +130,9 @@ resource "aws_security_group" "alb" {
   }
 }
 
-# SG do ECS: so aceita trafego VINDO DO ALB (nao fica exposto direto na internet)
 resource "aws_security_group" "ecs" {
   name        = "${var.project_name}-ecs-sg"
-  description = "Security group do ECS - permite trafego apenas do ALB"
+  description = "Security group do ECS"
   vpc_id      = aws_vpc.main.id
 
   ingress {
@@ -210,11 +155,6 @@ resource "aws_security_group" "ecs" {
   }
 }
 
-# ============================================================================
-# 6. ALB — Application Load Balancer
-# ============================================================================
-# Distribui as requisicoes entre os containers do ECS.
-# Se tiver 2 containers rodando, o ALB manda 50% pra cada.
 resource "aws_lb" "app" {
   name               = "${var.project_name}-alb"
   internal           = false
@@ -227,13 +167,12 @@ resource "aws_lb" "app" {
   }
 }
 
-# Target Group: grupo de alvos (containers) que o ALB roteia
 resource "aws_lb_target_group" "app" {
   name        = "${var.project_name}-tg"
   port        = var.container_port
   protocol    = "HTTP"
   vpc_id      = aws_vpc.main.id
-  target_type = "ip" # Fargate usa IPs, nao instancias EC2
+  target_type = "ip"
 
   health_check {
     enabled             = true
@@ -248,7 +187,6 @@ resource "aws_lb_target_group" "app" {
   }
 }
 
-# Listener: escuta na porta 80 e encaminha pro Target Group
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.app.arn
   port              = 80
@@ -260,12 +198,6 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-# ============================================================================
-# 7. IAM Roles — Permissoes
-# ============================================================================
-
-# Execution Role: usado pelo ECS Agent pra gerenciar o container
-# (puxar imagem do ECR, enviar logs pro CloudWatch)
 resource "aws_iam_role" "ecs_execution" {
   name = "${var.project_name}-ecs-execution-role"
 
@@ -283,14 +215,11 @@ resource "aws_iam_role" "ecs_execution" {
   })
 }
 
-# Politica padrao da AWS para ECS (inclui ECR pull + CloudWatch logs)
 resource "aws_iam_role_policy_attachment" "ecs_execution" {
   role       = aws_iam_role.ecs_execution.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-# Task Role: permissoes que o codigo DENTRO do container tem.
-# Se precisar acessar S3, DynamoDB, etc, adiciona aqui.
 resource "aws_iam_role" "ecs_task" {
   name = "${var.project_name}-ecs-task-role"
 
@@ -308,11 +237,6 @@ resource "aws_iam_role" "ecs_task" {
   })
 }
 
-# ============================================================================
-# 8. CloudWatch Log Group — Logs centralizados
-# ============================================================================
-# Todos os logs do container (stdout/stderr) vao pra ca.
-# Da pra ver tudo pelo console da AWS.
 resource "aws_cloudwatch_log_group" "app" {
   name              = "/ecs/${var.project_name}"
   retention_in_days = 14
@@ -322,11 +246,6 @@ resource "aws_cloudwatch_log_group" "app" {
   }
 }
 
-# ============================================================================
-# 9. ECS Cluster
-# ============================================================================
-# Agrupamento logico de tasks/services.
-# Com Fargate, nao precisa gerenciar servidores EC2 — a AWS cuida disso.
 resource "aws_ecs_cluster" "main" {
   name = "${var.project_name}-cluster"
 
@@ -336,11 +255,6 @@ resource "aws_ecs_cluster" "main" {
   }
 }
 
-# ============================================================================
-# 10. ECS Task Definition — Definicao do Container
-# ============================================================================
-# Descreve COMO o container deve rodar: imagem, CPU, RAM, portas, logs.
-# Mesma ideia do docker-compose, mas pro ECS Fargate.
 resource "aws_ecs_task_definition" "app" {
   family                   = var.project_name
   network_mode             = "awsvpc"
@@ -397,11 +311,6 @@ resource "aws_ecs_task_definition" "app" {
   ])
 }
 
-# ============================================================================
-# 11. ECS Service — Garante que os containers estejam rodando
-# ============================================================================
-# Mantem "desired_count" tasks SEMPRE rodando.
-# Se um container morrer, o ECS sobe outro automaticamente.
 resource "aws_ecs_service" "app" {
   name            = "${var.project_name}-service"
   cluster         = aws_ecs_cluster.main.id
@@ -415,7 +324,6 @@ resource "aws_ecs_service" "app" {
     assign_public_ip = true
   }
 
-  # Registra os containers no Target Group do ALB
   load_balancer {
     target_group_arn = aws_lb_target_group.app.arn
     container_name   = var.project_name

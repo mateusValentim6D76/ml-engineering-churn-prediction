@@ -1,44 +1,35 @@
-
-# ── Projeto ──────────────────────────────────────────────────────────────────
-
 variable "project_name" {
-  description = "Nome do projeto (usado como prefixo em todos os recursos)"
+  description = "Nome do projeto"
   type        = string
   default     = "churn-prediction"
 }
 
 variable "environment" {
-  description = "Ambiente de deploy (dev, staging, prod)"
+  description = "Ambiente de deploy"
   type        = string
   default     = "dev"
 }
 
-# ── AWS ──────────────────────────────────────────────────────────────────────
-
 variable "aws_region" {
-  description = "Região da AWS onde os recursos serão criados"
+  description = "Região da AWS"
   type        = string
   default     = "us-east-1"
 }
 
-# ── Rede (VPC) ───────────────────────────────────────────────────────────────
-
 variable "vpc_cidr" {
-  description = "CIDR block da VPC (range de IPs da rede privada)"
+  description = "CIDR block da VPC"
   type        = string
   default     = "10.0.0.0/16"
 }
 
-# ── ECS (Container) ─────────────────────────────────────────────────────────
-
 variable "container_port" {
-  description = "Porta que o container expõe (deve bater com o EXPOSE do Dockerfile)"
+  description = "Porta do container"
   type        = number
   default     = 8000
 }
 
 variable "cpu" {
-  description = "CPU para a task ECS (em unidades: 256 = 0.25 vCPU)"
+  description = "CPU para a task ECS (256 = 0.25 vCPU)"
   type        = number
   default     = 256
 }
@@ -50,13 +41,13 @@ variable "memory" {
 }
 
 variable "desired_count" {
-  description = "Número de instâncias (tasks) do container rodando simultaneamente"
+  description = "Número de instâncias do container"
   type        = number
   default     = 1
 }
 
 variable "health_check_path" {
-  description = "Path do health check usado pelo ALB"
+  description = "Path do health check"
   type        = string
   default     = "/health"
 }
