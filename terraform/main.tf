@@ -105,42 +105,18 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
-resource "aws_security_group" "alb" {
-  name        = "${var.project_name}-alb-sg"
-  description = "Security group do ALB"
-  vpc_id      = aws_vpc.main.id
-
-  ingress {
-    description = "HTTP da internet"
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name = "${var.project_name}-alb-sg"
-  }
-}
-
+# Security Group do ECS — aceita tráfego do API Gateway via VPC Link
 resource "aws_security_group" "ecs" {
   name        = "${var.project_name}-ecs-sg"
   description = "Security group do ECS"
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description     = "Trafego do ALB"
-    from_port       = var.container_port
-    to_port         = var.container_port
-    protocol        = "tcp"
-    security_groups = [aws_security_group.alb.id]
+    description = "Trafego do API Gateway via VPC Link"
+    from_port   = var.container_port
+    to_port     = var.container_port
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr] # Aceita tráfego de dentro da VPC
   }
 
   egress {
@@ -155,48 +131,6 @@ resource "aws_security_group" "ecs" {
   }
 }
 
-resource "aws_lb" "app" {
-  name               = "${var.project_name}-alb"
-  internal           = false
-  load_balancer_type = "application"
-  security_groups    = [aws_security_group.alb.id]
-  subnets            = aws_subnet.public[*].id
-
-  tags = {
-    Name = "${var.project_name}-alb"
-  }
-}
-
-resource "aws_lb_target_group" "app" {
-  name        = "${var.project_name}-tg"
-  port        = var.container_port
-  protocol    = "HTTP"
-  vpc_id      = aws_vpc.main.id
-  target_type = "ip"
-
-  health_check {
-    enabled             = true
-    path                = var.health_check_path
-    port                = "traffic-port"
-    protocol            = "HTTP"
-    healthy_threshold   = 2
-    unhealthy_threshold = 3
-    timeout             = 5
-    interval            = 30
-    matcher             = "200"
-  }
-}
-
-resource "aws_lb_listener" "http" {
-  load_balancer_arn = aws_lb.app.arn
-  port              = 80
-  protocol          = "HTTP"
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.app.arn
-  }
-}
 
 resource "aws_iam_role" "ecs_execution" {
   name = "${var.project_name}-ecs-execution-role"
@@ -245,6 +179,100 @@ resource "aws_cloudwatch_log_group" "app" {
     Name = "${var.project_name}-logs"
   }
 }
+
+# ============================================================================
+# Cloud Map — Service Discovery
+# ============================================================================
+# Funciona como um DNS interno privado: quando o Fargate sobe um container,
+# registra o IP automaticamente. O API Gateway consulta o Cloud Map para
+# saber qual IP encaminhar as requisições.
+# Analogia Java: é como o Eureka do Spring Cloud (service registry).
+# ============================================================================
+
+resource "aws_service_discovery_private_dns_namespace" "main" {
+  name        = "${var.project_name}.local"
+  description = "Namespace para service discovery do ${var.project_name}"
+  vpc         = aws_vpc.main.id
+
+  tags = {
+    Name = "${var.project_name}-namespace"
+  }
+}
+
+resource "aws_service_discovery_service" "app" {
+  name = "api"
+
+  dns_config {
+    namespace_id = aws_service_discovery_private_dns_namespace.main.id
+
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+
+    routing_policy = "MULTIVALUE"
+  }
+
+  health_check_custom_config {
+    failure_threshold = 1
+  }
+
+  tags = {
+    Name = "${var.project_name}-discovery"
+  }
+}
+
+# ============================================================================
+# API Gateway HTTP API — Ponto de entrada público (substitui o ALB)
+# ============================================================================
+
+resource "aws_apigatewayv2_vpc_link" "main" {
+  name               = "${var.project_name}-vpc-link"
+  security_group_ids = [aws_security_group.ecs.id]
+  subnet_ids         = aws_subnet.public[*].id
+
+  tags = {
+    Name = "${var.project_name}-vpc-link"
+  }
+}
+
+resource "aws_apigatewayv2_api" "main" {
+  name          = "${var.project_name}-api"
+  protocol_type = "HTTP"
+
+  tags = {
+    Name = "${var.project_name}-api"
+  }
+}
+
+resource "aws_apigatewayv2_integration" "app" {
+  api_id             = aws_apigatewayv2_api.main.id
+  integration_type   = "HTTP_PROXY"
+  integration_method = "ANY"
+  connection_type    = "VPC_LINK"
+  connection_id      = aws_apigatewayv2_vpc_link.main.id
+  integration_uri    = aws_service_discovery_service.app.arn
+}
+
+resource "aws_apigatewayv2_route" "catch_all" {
+  api_id    = aws_apigatewayv2_api.main.id
+  route_key = "$default"
+  target    = "integrations/${aws_apigatewayv2_integration.app.id}"
+}
+
+resource "aws_apigatewayv2_stage" "default" {
+  api_id      = aws_apigatewayv2_api.main.id
+  name        = "$default"
+  auto_deploy = true
+
+  tags = {
+    Name = "${var.project_name}-stage"
+  }
+}
+
+# ============================================================================
+# ECS — Cluster, Task Definition e Service
+# ============================================================================
 
 resource "aws_ecs_cluster" "main" {
   name = "${var.project_name}-cluster"
@@ -324,11 +352,9 @@ resource "aws_ecs_service" "app" {
     assign_public_ip = true
   }
 
-  load_balancer {
-    target_group_arn = aws_lb_target_group.app.arn
-    container_name   = var.project_name
-    container_port   = var.container_port
+  # Registra o container no Cloud Map (service discovery)
+  # O ECS registra/remove o IP automaticamente quando o container sobe/morre
+  service_registries {
+    registry_arn = aws_service_discovery_service.app.arn
   }
-
-  depends_on = [aws_lb_listener.http]
 }

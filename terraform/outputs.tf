@@ -1,6 +1,6 @@
 output "api_url" {
-  description = "URL da API"
-  value       = "http://${aws_lb.app.dns_name}"
+  description = "URL da API (API Gateway HTTP API)"
+  value       = aws_apigatewayv2_api.main.api_endpoint
 }
 
 output "ecr_repository_url" {
