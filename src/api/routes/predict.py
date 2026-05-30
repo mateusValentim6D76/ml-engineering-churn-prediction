@@ -10,12 +10,16 @@ from src.api.schemas import (
     CustomerFeatures,
     PredictionResponse,
 )
-from src.data.preprocessing import raw_to_ohe
+from src.data.preprocessing import ChurnPreprocessor
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
 router = APIRouter(tags=["Prediction"])
+
+# ChurnPreprocessor não tem estado mutável, então uma única instância
+# compartilhada entre requests é suficiente.
+_preprocessor = ChurnPreprocessor()
 
 
 @router.post("/predict", response_model=PredictionResponse)
@@ -29,8 +33,7 @@ async def predict(
             content={"detail": "Modelo não carregado. Tente novamente mais tarde."},
         )
 
-    raw_dict = features.to_raw_dict()
-    ohe_dict = raw_to_ohe(raw_dict)
+    ohe_dict = _preprocessor.transform(features.to_raw_dict())
     probability, prediction = model.predictor.predict(ohe_dict)
 
     logger.info(
@@ -63,8 +66,7 @@ async def predict_batch(
     results: list[PredictionResponse] = []
 
     for customer in request.customers:
-        raw_dict = customer.to_raw_dict()
-        ohe_dict = raw_to_ohe(raw_dict)
+        ohe_dict = _preprocessor.transform(customer.to_raw_dict())
         probability, prediction = model.predictor.predict(ohe_dict)
 
         results.append(

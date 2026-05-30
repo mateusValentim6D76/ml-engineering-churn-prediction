@@ -10,10 +10,10 @@ class TestImports:
         from src.utils.logging import get_logger, setup_logging  # noqa: F401
 
     def test_import_model(self):
-        from src.models.mlp import ChurnMLP, ChurnPredictor  # noqa: F401
+        from src.models.mlp import BasePredictor, ChurnMLP, ChurnPredictor, ModelLoader  # noqa: F401
 
     def test_import_preprocessing(self):
-        from src.data.preprocessing import raw_to_ohe  # noqa: F401
+        from src.data.preprocessing import ChurnPreprocessor, raw_to_ohe  # noqa: F401
 
 
 class TestAppConfiguration:

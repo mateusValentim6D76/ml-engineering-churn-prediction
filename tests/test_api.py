@@ -100,49 +100,64 @@ class TestPredictBatchEndpoint:
 
 class TestPreprocessing:
 
-    def test_raw_to_ohe_produces_correct_keys(self):
-        from src.data.preprocessing import raw_to_ohe
+    RAW_INPUT = {
+        "gender": "Male",
+        "SeniorCitizen": 0,
+        "tenure": 12,
+        "MonthlyCharges": 50.0,
+        "TotalCharges": 600.0,
+        "Partner": "Yes",
+        "Dependents": "No",
+        "PhoneService": "Yes",
+        "MultipleLines": "No",
+        "InternetService": "DSL",
+        "OnlineSecurity": "No",
+        "OnlineBackup": "No",
+        "DeviceProtection": "No",
+        "TechSupport": "No",
+        "StreamingTV": "No",
+        "StreamingMovies": "No",
+        "Contract": "Month-to-month",
+        "PaperlessBilling": "Yes",
+        "PaymentMethod": "Electronic check",
+    }
 
-        raw = {
-            "gender": "Male",
-            "SeniorCitizen": 0,
-            "tenure": 12,
-            "MonthlyCharges": 50.0,
-            "TotalCharges": 600.0,
-            "Partner": "Yes",
-            "Dependents": "No",
-            "PhoneService": "Yes",
-            "MultipleLines": "No",
-            "InternetService": "DSL",
-            "OnlineSecurity": "No",
-            "OnlineBackup": "No",
-            "DeviceProtection": "No",
-            "TechSupport": "No",
-            "StreamingTV": "No",
-            "StreamingMovies": "No",
-            "Contract": "Month-to-month",
-            "PaperlessBilling": "Yes",
-            "PaymentMethod": "Electronic check",
-        }
-        ohe = raw_to_ohe(raw)
+    def test_preprocessor_transform_produces_correct_keys(self):
+        from src.data.preprocessing import ChurnPreprocessor
+
+        preprocessor = ChurnPreprocessor()
+        ohe = preprocessor.transform(self.RAW_INPUT)
 
         assert "SeniorCitizen" in ohe
         assert "tenure" in ohe
         assert "MonthlyCharges" in ohe
         assert "TotalCharges" in ohe
-
         assert "gender_Male" in ohe
         assert ohe["gender_Male"] == 1.0
-
         assert "Partner_Yes" in ohe
         assert ohe["Partner_Yes"] == 1.0
-
         assert "Contract_One year" in ohe
         assert ohe["Contract_One year"] == 0.0
 
-    def test_raw_to_ohe_female_gender(self):
+    def test_preprocessor_transform_female_gender(self):
+        from src.data.preprocessing import ChurnPreprocessor
+
+        preprocessor = ChurnPreprocessor()
+        ohe = preprocessor.transform({"gender": "Female", "tenure": 5, "MonthlyCharges": 30, "TotalCharges": 150})
+        assert ohe["gender_Male"] == 0.0
+
+    def test_preprocessor_transform_batch(self):
+        from src.data.preprocessing import ChurnPreprocessor
+
+        preprocessor = ChurnPreprocessor()
+        results = preprocessor.transform_batch([self.RAW_INPUT, self.RAW_INPUT])
+        assert len(results) == 2
+        assert all("gender_Male" in r for r in results)
+
+    def test_raw_to_ohe_wrapper_compatibility(self):
+        """Garante que o wrapper de compatibilidade continua funcionando."""
         from src.data.preprocessing import raw_to_ohe
 
-        raw = {"gender": "Female", "tenure": 5, "MonthlyCharges": 30, "TotalCharges": 150}
-        ohe = raw_to_ohe(raw)
-        assert ohe["gender_Male"] == 0.0
+        ohe = raw_to_ohe(self.RAW_INPUT)
+        assert "gender_Male" in ohe
+        assert ohe["gender_Male"] == 1.0
