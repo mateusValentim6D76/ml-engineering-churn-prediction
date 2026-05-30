@@ -210,7 +210,12 @@ resource "aws_service_discovery_service" "app" {
       type = "A"
     }
 
-    routing_policy = "MULTIVALUE"
+    dns_records {
+      ttl  = 10
+      type = "SRV"
+    }
+
+    routing_policy = "WEIGHTED"
   }
 
   health_check_custom_config {
@@ -355,6 +360,8 @@ resource "aws_ecs_service" "app" {
   # Registra o container no Cloud Map (service discovery)
   # O ECS registra/remove o IP automaticamente quando o container sobe/morre
   service_registries {
-    registry_arn = aws_service_discovery_service.app.arn
+    registry_arn   = aws_service_discovery_service.app.arn
+    container_name = var.project_name
+    container_port = var.container_port
   }
 }
