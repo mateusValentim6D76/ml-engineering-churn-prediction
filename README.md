@@ -1,6 +1,6 @@
 # Churn Prediction - ML Engineering Pipeline
 
-Pipeline end-to-end de Machine Learning para predição de churn (cancelamento) de clientes de uma operadora de telecomunicações. O projeto cobre desde a análise exploratória até o deploy de uma API de inferência com FastAPI.
+Pipeline end-to-end de Machine Learning para predição de churn (cancelamento) de clientes de uma operadora de telecomunicações. O projeto cobre desde a análise exploratória até o deploy de uma API de inferência com FastAPI, rodando em ECS Fargate na AWS.
 
 ## Sobre o Projeto
 
@@ -17,9 +17,8 @@ Pipeline end-to-end de Machine Learning para predição de churn (cancelamento) 
 - **Experiment Tracking**: MLflow
 - **Testing**: pytest + httpx
 - **Linting**: ruff
-- **Containerization**: Docker + Docker Compose
-- **Infrastructure**: Terraform (AWS ECS Fargate + API Gateway)
-- **Logging**: structlog (JSON estruturado)
+- **Containerização**: Docker + Docker Compose
+- **Infraestrutura**: Terraform AWS ECS Fargate + API Gateway HTTP API + Cloud Map
 
 ## Estrutura do Projeto
 
@@ -27,24 +26,25 @@ Pipeline end-to-end de Machine Learning para predição de churn (cancelamento) 
 .
 ├── src/
 │   ├── api/
-│   │   ├── main.py            # App FastAPI (wiring de routers + middleware)
+│   │   ├── main.py            # App FastAPI (routers + middleware)
 │   │   ├── dependencies.py    # DI - carregamento do modelo com @lru_cache
 │   │   ├── schemas.py         # DTOs Pydantic (entrada/saída da API)
 │   │   └── routes/
 │   │       ├── health.py      # GET /health
 │   │       └── predict.py     # POST /predict + POST /predict-batch
 │   ├── data/
-│   │   └── preprocessing.py   # Conversão JSON -> One-Hot Encoding
+│   │   └── preprocessing.py   # ChurnPreprocessor (JSON -> One-Hot Encoding)
 │   ├── models/
-│   │   └── mlp.py             # ChurnMLP (nn.Module) + ChurnPredictor
+│   │   ├── mlp.py             # ChurnMLP + ChurnPredictor + ModelLoader
+│   │   └── train.py           # Pipeline de treinamento (CLI)
 │   └── utils/
-│       └── logging.py         # Configuração structlog
+│       └── logging.py         # structlog (JSON estruturado)
 ├── models/
 │   ├── churn_mlp.pt           # Checkpoint do modelo treinado
 │   └── scaler.joblib          # StandardScaler ajustado no treino
 ├── notebooks/
-│   ├── 01_eda_baselines.ipynb # Etapa 1: EDA + Baselines + MLflow
-│   └── 02_mlp_pytorch.ipynb   # Etapa 2: MLP PyTorch + Cross-Validation
+│   ├── 01_eda_baselines.ipynb # EDA + Baselines + MLflow
+│   └── 02_mlp_pytorch.ipynb   # MLP PyTorch + Cross-Validation
 ├── tests/
 │   ├── test_api.py            # Testes dos endpoints + preprocessing
 │   ├── test_schema.py         # Testes de validação Pydantic
@@ -52,280 +52,319 @@ Pipeline end-to-end de Machine Learning para predição de churn (cancelamento) 
 ├── data/raw/                   # Dataset original (.csv)
 ├── terraform/                  # Infraestrutura como código (AWS)
 ├── Dockerfile
-├── docker-compose.yml
-├── pyproject.toml              # Dependências e config (ruff, pytest)
+├── docker-compose.yaml
+├── pyproject.toml
 └── README.md
 ```
 
 ## Pré-requisitos
 
 - Python 3.11+
-- pip (ou pipx)
-- Git
-- (Opcional) Docker + Docker Compose para containerização
-- (Opcional) AWS CLI + Terraform para deploy na nuvem
+- Docker + Docker Compose
+- (Para deploy na AWS) AWS CLI configurado + Terraform instalado
 
-## 1. Setup do Ambiente
+## Executando Localmente
+
+### 1. Clonar e instalar dependências
 
 ```powershell
-# Clonar o repositório
 git clone https://github.com/mateusValentim6D76/ml-engineering-churn-prediction
 cd ml-engineering-churn-prediction
 
-# Criar virtual environment
 python -m venv .venv
-
-# Ativar (Windows PowerShell)
 .\.venv\Scripts\Activate.ps1
 
-# Instalar dependências (produção + dev)
 pip install -e ".[dev]"
 ```
 
-## 2. Treinar o Modelo
+### 2. Treinar o modelo
 
-O treinamento é feito nos Jupyter Notebooks, na seguinte ordem:
-
-### Etapa 1 - EDA + Baselines
+O comando abaixo executa o pipeline completo de treinamento e salva os artefatos em `models/`:
 
 ```powershell
-jupyter notebook notebooks/01_eda_baselines.ipynb
+python -m src.models.train
 ```
 
-O que esse notebook faz:
-- Carrega o dataset Telco Customer Churn
-- Análise exploratória (distribuições, correlações, outliers)
-- Pré-processamento (One-Hot Encoding, train/test split 80/20)
-- Treina baselines: DummyClassifier (random) e Logistic Regression
-- Registra experimentos no MLflow
+Os artefatos gerados são:
+- `models/churn_mlp.pt` - checkpoint com state_dict, arquitetura, métricas e feature_names
+- `models/scaler.joblib` - StandardScaler ajustado nos dados de treino
 
-### Etapa 2 - MLP PyTorch
+Opções disponíveis:
 
 ```powershell
-jupyter notebook notebooks/02_mlp_pytorch.ipynb
+python -m src.models.train --epochs 200 --no-mlflow
+python -m src.models.train --model-dir models/
 ```
 
-O que esse notebook faz:
-- Carrega dados já processados
-- Define a arquitetura MLP (128->64->32 neurônios, BatchNorm, Dropout)
-- Treina com Early Stopping (BCEWithLogitsLoss + pos_weight para desbalanceamento)
-- Validação cruzada estratificada (5-fold)
-- Compara MLP vs Baselines
-- Salva artefatos em `models/`:
-  - `churn_mlp.pt` - checkpoint com state_dict, arquitetura, métricas, feature_names
-  - `scaler.joblib` - StandardScaler ajustado nos dados de treino
-
-### Visualizar experimentos no MLflow
+Alternativamente, os notebooks cobrem o treinamento com EDA completo:
 
 ```powershell
-mlflow ui --port 5000
-# Abrir http://localhost:5000 no navegador
+jupyter notebook notebooks/01_eda_baselines.ipynb  # EDA + Baselines
+jupyter notebook notebooks/02_mlp_pytorch.ipynb    # MLP PyTorch
 ```
 
-## 3. Subir a API de Inferência
+### 3. Subir a API
 
-### Opção A - Localmente com Uvicorn
+**Opção A - Uvicorn direto** (mais rápido para desenvolvimento):
 
 ```powershell
-# Certifique-se que os artefatos existem:
-#   models/churn_mlp.pt
-#   models/scaler.joblib
-
-# Subir a API (hot-reload habilitado)
 uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
+**Opção B - Docker Compose** (API + MLflow):
+
+```powershell
+docker compose up --build -d
+```
+
 A API estará disponível em:
-- **Swagger UI:** http://localhost:8000/docs
-- **Health check:** http://localhost:8000/health
-- **Predição:** POST http://localhost:8000/predict
-- **Predição em lote:** POST http://localhost:8000/predict-batch
 
-### Opção B - Com Docker
+| Rota | Descrição |
+|------|-----------|
+| http://localhost:8000/health | Health check |
+| http://localhost:8000/predict | Predição individual |
+| http://localhost:8000/predict-batch | Predição em lote |
+| http://localhost:8000/docs | Swagger UI |
+| http://localhost:5000 | MLflow UI (apenas Docker Compose) |
 
-```powershell
-# Build + run
-docker-compose up --build
-
-# API:    http://localhost:8000/docs
-# MLflow: http://localhost:5000
-```
-
-## 4. Testar a API
-
-### Rodar testes automatizados
-
-```powershell
-# Todos os testes
-pytest tests/ -v
-
-# Apenas testes da API
-pytest tests/test_api.py -v
-
-# Com cobertura
-pytest tests/ --cov=src --cov-report=term-missing
-```
-
-### Testar manualmente (curl ou Swagger)
+### 4. Testar a API
 
 **Health check:**
-```bash
+
+```powershell
 curl http://localhost:8000/health
 ```
 
 **Predição individual:**
-```bash
-curl -X POST http://localhost:8000/predict \
-  -H "Content-Type: application/json" \
+
+```powershell
+curl -X POST http://localhost:8000/predict `
+  -H "Content-Type: application/json" `
   -d '{
     "gender": "Female",
     "senior_citizen": 0,
-    "partner": "Yes",
+    "partner": "No",
     "dependents": "No",
-    "tenure": 1,
-    "contract": "Month-to-month",
-    "paperless_billing": "Yes",
-    "payment_method": "Electronic check",
-    "phone_service": "No",
-    "multiple_lines": "No phone service",
-    "internet_service": "DSL",
+    "tenure": 2,
+    "phone_service": "Yes",
+    "multiple_lines": "No",
+    "internet_service": "Fiber optic",
     "online_security": "No",
-    "online_backup": "Yes",
+    "online_backup": "No",
     "device_protection": "No",
     "tech_support": "No",
     "streaming_tv": "No",
     "streaming_movies": "No",
-    "monthly_charges": 29.85,
-    "total_charges": 29.85
+    "contract": "Month-to-month",
+    "paperless_billing": "Yes",
+    "payment_method": "Electronic check",
+    "monthly_charges": 70.70,
+    "total_charges": 151.65
   }'
 ```
 
-**Resposta esperada:**
-```json
-{
-  "churn_probability": 0.7234,
-  "churn_prediction": true,
-  "model_version": "0.1.0"
-}
-```
+**Predição em lote:**
 
-**Predição em lote (batch):**
-```bash
-curl -X POST http://localhost:8000/predict-batch \
-  -H "Content-Type: application/json" \
+```powershell
+curl -X POST http://localhost:8000/predict-batch `
+  -H "Content-Type: application/json" `
   -d '{
     "customers": [
+      {
+        "gender": "Female",
+        "senior_citizen": 0,
+        "partner": "No",
+        "dependents": "No",
+        "tenure": 2,
+        "phone_service": "Yes",
+        "multiple_lines": "No",
+        "internet_service": "Fiber optic",
+        "online_security": "No",
+        "online_backup": "No",
+        "device_protection": "No",
+        "tech_support": "No",
+        "streaming_tv": "No",
+        "streaming_movies": "No",
+        "contract": "Month-to-month",
+        "paperless_billing": "Yes",
+        "payment_method": "Electronic check",
+        "monthly_charges": 70.70,
+        "total_charges": 151.65
+      },
       {
         "gender": "Male",
         "senior_citizen": 0,
         "partner": "No",
         "dependents": "No",
-        "tenure": 48,
-        "contract": "Two year",
+        "tenure": 34,
+        "phone_service": "Yes",
+        "multiple_lines": "No",
+        "internet_service": "DSL",
+        "online_security": "Yes",
+        "online_backup": "No",
+        "device_protection": "Yes",
+        "tech_support": "No",
+        "streaming_tv": "No",
+        "streaming_movies": "No",
+        "contract": "One year",
         "paperless_billing": "No",
-        "payment_method": "Bank transfer (automatic)",
+        "payment_method": "Mailed check",
+        "monthly_charges": 56.95,
+        "total_charges": 1889.50
+      },
+      {
+        "gender": "Male",
+        "senior_citizen": 0,
+        "partner": "No",
+        "dependents": "Yes",
+        "tenure": 22,
         "phone_service": "Yes",
         "multiple_lines": "Yes",
         "internet_service": "Fiber optic",
-        "online_security": "Yes",
+        "online_security": "No",
         "online_backup": "Yes",
-        "device_protection": "Yes",
-        "tech_support": "Yes",
+        "device_protection": "No",
+        "tech_support": "No",
         "streaming_tv": "Yes",
-        "streaming_movies": "Yes",
-        "monthly_charges": 100.50,
-        "total_charges": 4824.00
+        "streaming_movies": "No",
+        "contract": "Month-to-month",
+        "paperless_billing": "Yes",
+        "payment_method": "Credit card (automatic)",
+        "monthly_charges": 89.10,
+        "total_charges": 1949.40
       }
     ]
   }'
 ```
 
-## 5. Endpoints da API
-
-| Método | Rota | Descrição |
-|--------|------|-----------|
-| GET | `/health` | Health check (status, modelo carregado, métricas) |
-| POST | `/predict` | Predição de churn para 1 cliente |
-| POST | `/predict-batch` | Predição de churn para N clientes (máx 100) |
-| GET | `/docs` | Swagger UI (documentação interativa) |
-| GET | `/redoc` | ReDoc (documentação alternativa) |
-
-## 6. Arquitetura da API (Modular)
-
-A API segue o padrão de Dependency Injection do FastAPI (similar ao Spring Boot):
-
-```
-Request HTTP
-    |
-    v
-main.py (middleware mede latência)
-    |
-    v
-routes/predict.py (valida entrada com Pydantic)
-    |
-    +-- Depends(get_model) -> dependencies.py (injeta ModelContainer singleton)
-    |
-    v
-preprocessing.py (OHE) -> models/mlp.py (normaliza + infere)
-    |
-    v
-Response JSON (PredictionResponse)
-```
-
-| Arquivo | Responsabilidade |
-|---------|-----------------|
-| `main.py` | Instancia o app, registra routers e middleware |
-| `dependencies.py` | Carrega modelo 1x com `@lru_cache`, injeta via `Depends()` |
-| `routes/health.py` | Endpoint `/health` |
-| `routes/predict.py` | Endpoints `/predict` e `/predict-batch` |
-| `schemas.py` | Validação de entrada/saída (DTOs Pydantic) |
-| `models/mlp.py` | Classe do modelo + wrapper de inferência |
-| `data/preprocessing.py` | Conversão JSON bruto -> One-Hot Encoding |
-
-## 7. Linting e Formatação
+### 5. Rodar os testes
 
 ```powershell
-# Verificar problemas
-ruff check src/ tests/
+pytest tests/ -v --tb=short
 
-# Corrigir automaticamente
-ruff check src/ tests/ --fix
-
-# Formatar código
-ruff format src/ tests/
+# Com cobertura
+pytest tests/ -v --tb=short --cov=src --cov-report=term-missing
 ```
 
-## 8. Deploy na AWS (Terraform)
+### 6. Derrubar os containers
 
-A infraestrutura usa API Gateway HTTP API + ECS Fargate + Cloud Map para service discovery, substituindo o ALB para redução de custos.
+```powershell
+docker compose down
+```
+
+## Deploy na AWS com Terraform
+
+### Pré-requisitos
+
+- AWS CLI instalado e configurado (`aws configure`) com região `us-east-1`
+- Terraform instalado
+- Docker instalado e rodando
+
+### 1. Provisionar a infraestrutura
 
 ```powershell
 cd terraform
 terraform init
-terraform plan
 terraform apply
 ```
 
-Os outputs exibem a URL do API Gateway e demais recursos criados.
+Ao final do `apply`, os outputs mostram os recursos criados:
 
-### Fazer o build e push da imagem para o ECR
+```
+api_url               = "https://<id>.execute-api.us-east-1.amazonaws.com"
+ecr_repository_url    = "<account>.dkr.ecr.us-east-1.amazonaws.com/churn-prediction"
+ecs_cluster_name      = "churn-prediction-cluster"
+ecs_service_name      = "churn-prediction-service"
+cloudwatch_log_group  = "/ecs/churn-prediction"
+```
+
+Guarde o valor de `ecr_repository_url` ele e necessario nos próximos passos.
+
+### 2. Fazer o build e push da imagem para o ECR
+
+> O token do ECR expira em 12 horas. Se receber erro 403 no push, refaça o login.
 
 ```powershell
-# Login no ECR
+# Login no ECR (use a sintaxe abaixo no PowerShell - o pipe causa erro de encoding)
 docker login --username AWS --password (aws ecr get-login-password --region us-east-1) <ECR_URL>
 
-# Build e push
+# Build da imagem
 docker build -t <ECR_URL>:latest .
+
+# Push para o ECR
 docker push <ECR_URL>:latest
 ```
 
-### Destruir a infra
+Substitua `<ECR_URL>` pelo valor de `ecr_repository_url` do output do Terraform.
+
+### 3. Forçar novo deploy no ECS
+
+Após o push da imagem, force o ECS a subir uma nova task:
 
 ```powershell
-terraform destroy -auto-approve
+aws ecs update-service `
+  --cluster churn-prediction-cluster `
+  --service churn-prediction-service `
+  --force-new-deployment `
+  --region us-east-1
 ```
 
-## Métricas do Modelo (referência)
+### 4. Aguardar o container subir
+
+Aguarde uns2 minutos e verifique se a task está em execução:
+
+```powershell
+aws ecs describe-services `
+  --cluster churn-prediction-cluster `
+  --services churn-prediction-service `
+  --region us-east-1 `
+  --query "services[0].{running:runningCount,desired:desiredCount,status:status}"
+```
+
+O retorno esperado é `"running": 1`.
+
+### 5. Testar na AWS
+
+Use a `api_url` do output do Terraform:
+
+```powershell
+curl https://<id>.execute-api.us-east-1.amazonaws.com/health
+
+curl -X POST https://<id>.execute-api.us-east-1.amazonaws.com/predict `
+  -H "Content-Type: application/json" `
+  -d '{ ... }'
+```
+
+### 6. Ver logs em caso de erro
+
+**Via AWS Console:**
+1. ECS -> cluster `churn-prediction-cluster`
+2. Aba **Tasks** -> filtre por **Stopped** para ver tasks com erro
+3. Clique na task -> **View logs in CloudWatch**
+
+**Via CLI:**
+```powershell
+aws logs tail /ecs/churn-prediction --since 30m --region us-east-1
+```
+
+### 7. Destruir a infraestrutura
+
+```powershell
+cd terraform
+terraform destroy
+```
+
+## Endpoints da API
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| GET | `/health` | Status da API e do modelo carregado |
+| POST | `/predict` | Predição de churn para 1 cliente |
+| POST | `/predict-batch` | Predição de churn para N clientes (max 100) |
+| GET | `/docs` | Swagger UI |
+| GET | `/redoc` | ReDoc |
+
+## Metricas do Modelo
 
 | Modelo | Accuracy | F1-Score | AUC-ROC |
 |--------|----------|----------|---------|
@@ -333,7 +372,7 @@ terraform destroy -auto-approve
 | Logistic Regression | ~0.80 | ~0.57 | ~0.84 |
 | **MLP PyTorch** | **~0.80** | **~0.59** | **~0.85** |
 
-*Métricas exatas variam conforme execução. Consulte o MLflow para valores reais.*
+*Metricas exatas variam conforme execucao. Consulte o MLflow para valores reais.*
 
 ## License
 
