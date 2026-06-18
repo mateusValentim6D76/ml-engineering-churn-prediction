@@ -303,8 +303,10 @@ def _log_to_mlflow(params: dict, metrics: dict, history: dict, artifacts: list[P
     try:
         import mlflow
 
+        import os
+        tracking_uri = os.environ.get("MLFLOW_TRACKING_URI") or DEFAULT_MLRUNS_DIR.as_uri()
         DEFAULT_MLRUNS_DIR.mkdir(parents=True, exist_ok=True)
-        mlflow.set_tracking_uri(DEFAULT_MLRUNS_DIR.as_uri())
+        mlflow.set_tracking_uri(tracking_uri)
         mlflow.set_experiment("churn_prediction")
         with mlflow.start_run(run_name="mlp_pytorch_train"):
             mlflow.log_params(params)
