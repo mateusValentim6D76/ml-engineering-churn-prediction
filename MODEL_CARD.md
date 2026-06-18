@@ -44,7 +44,7 @@ Equipes de CRM, marketing e retencao de clientes de operadoras de telecomunicaco
 | Features originais | 19 (demograficas, servicos contratados, financeiras) |
 | Features apos OHE | 30 |
 | Target | `Churn` binario (Yes/No) |
-| Desbalanceamento | ~26,5% positivos (churn) / ~73,5% negativos |
+| Desbalanceamento | 26,5% positivos (churn) / 73,5% negativos |
 | Divisao | 80% treino / 20% teste (stratified, random_state=42) |
 
 ### Distribuicao do target
@@ -103,7 +103,7 @@ Sigmoid -> Probabilidade de churn [0, 1]
 
 ## 5. Metricas de Desempenho
 
-Avaliadas no conjunto de teste (20% dos dados, ~1.409 registros):
+Avaliadas no conjunto de teste (20% dos dados, 1.409 registros):
 
 | Metrica | Valor |
 |---------|-------|
@@ -118,8 +118,8 @@ Avaliadas no conjunto de teste (20% dos dados, ~1.409 registros):
 
 | Modelo | Accuracy | F1-Score | ROC-AUC |
 |--------|----------|----------|---------|
-| DummyClassifier (random) | ~0.50 | ~0.36 | 0.50 |
-| Logistic Regression | ~0.80 | ~0.57 | ~0.84 |
+| DummyClassifier (random) | 0.50 | 0.36 | 0.50 |
+| Logistic Regression | 0.80 | 0.57 | 0.84 |
 | **MLP PyTorch (este modelo)** | **0.73** | **0.62** | **0.84** |
 
 ### Interpretacao
@@ -175,7 +175,7 @@ As 30 features utilizadas apos One-Hot Encoding:
 
 | Limitacao | Descricao |
 |-----------|-----------|
-| Distribuicao do dataset | Treinado em dataset publico IBM com ~7k clientes. Pode nao generalizar para outras operadoras ou regioes |
+| Distribuicao do dataset | Treinado em dataset publico IBM com 7k clientes. Pode nao generalizar para outras operadoras ou regioes |
 | Deriva temporal | O modelo nao tem mecanismo de deteccao de data drift. Requer re-treinamento periodico |
 | Features estaticas | Nao captura comportamento temporal do cliente (ex.: variacao de uso ao longo do tempo) |
 | Interpretabilidade | Modelo de caixa-preta. Nao explica o motivo da predicao sem tecnicas como SHAP/LIME |
